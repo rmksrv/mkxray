@@ -31,7 +31,7 @@ func main() {
 func GenerateVlessLink(ctx *XrayContext, name, flow, typ, security, fp string) string {
 	PrintInfo("Generating vless link...\n")
 	link := fmt.Sprintf(
-		"vless://%s@%s?flow=%s&type=%s&security=%s&fp=%s&sni=%s&pbk=%s&sid=%s#%s",
+		"vless://%s@%s:443?flow=%s&type=%s&security=%s&fp=%s&sni=%s&pbk=%s&sid=%s#%s",
 		ctx.clientID,
 		ctx.externalIP,
 		flow,
@@ -77,7 +77,7 @@ func InstallXray() {
 	HandleError(err, "Unable to write xray installer")
 
 	PrintInfo("Running installer...\n")
-	err = RunCmd("./install-xray.sh")
+	err = RunCmd(installerPath)
 	HandleError(err, "Unable to run xray installer")
 
 	PrintInfo("Verifying installation...\n")
