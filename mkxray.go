@@ -24,6 +24,26 @@ func main() {
 	WriteConfigFile(cfg)
 	RestartXray()
 	PrintInfo("Xray service is ready for usage\n")
+	vlessLink := GenerateVlessLink(ctx, "mkxray", "xtls-rprx-vision", "raw", "reality", "edge")
+	PrintInfo(vlessLink + "\n")
+}
+
+func GenerateVlessLink(ctx *XrayContext, name, flow, typ, security, fp string) string {
+	PrintInfo("Generating vless link...\n")
+	link := fmt.Sprintf(
+		"vless://%s@%s?flow=%s&type=%s&security=%s&fp=%s&sni=%s&pbk=%s&sid=%s#%s",
+		ctx.clientID,
+		ctx.externalIP,
+		flow,
+		typ,
+		security,
+		fp,
+		ctx.serverName,
+		ctx.publicKey,
+		ctx.shortID,
+		name,
+	)
+	return link
 }
 
 func ExitIfNotRoot() {
@@ -76,9 +96,10 @@ func NewXrayContext(dest, serverName string) *XrayContext {
 		dest:       dest,
 		serverName: serverName,
 		privateKey: key,
-		public_key: pubKey,
+		publicKey:  pubKey,
 		clientID:   NewXrayUuid(),
 		shortID:    NewShortID(),
+		externalIP: GetExternalIP(),
 	}
 	return &ctx
 }
@@ -212,9 +233,10 @@ type XrayContext struct {
 	dest       string
 	serverName string
 	privateKey string
-	public_key string
+	publicKey  string
 	clientID   string
 	shortID    string
+	externalIP string
 }
 
 func HandleError(err error, msg string) {
@@ -268,5 +290,12 @@ func NewXrayKeys() (string, string) {
 func NewShortID() string {
 	out, err := exec.Command("openssl", "rand", "-hex", "8").Output()
 	HandleError(err, "Unable to generate short ID")
+	return string(out[0 : len(out)-1])
+}
+
+func GetExternalIP() string {
+	PrintInfo("Getting external IP...\n")
+	out, err := exec.Command("dig", "+short", "myip.opendns.com", "@resolver1.opendns.com").Output()
+	HandleError(err, "Unable to get external IP")
 	return string(out[0 : len(out)-1])
 }
