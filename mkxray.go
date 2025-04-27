@@ -28,10 +28,7 @@ func main() {
 
 func ExitIfNotRoot() {
 	currentUser, err := user.Current()
-	if err != nil {
-		PrintErr(fmt.Sprintf("Unable to get current user: %s\n", err))
-		os.Exit(-1)
-	}
+	HandleError(err, "Unable to get current user")
 	if currentUser.Username != "root" {
 		PrintErr("`mkxray` is supposed to be executed with elevated privileges. Please restart it using `sudo mkxray`\n")
 		os.Exit(1)
@@ -41,72 +38,47 @@ func ExitIfNotRoot() {
 func UpdateSystem() {
 	PrintInfo("Updating system...\n")
 	err := RunCmd("apt-get", "update", "-y")
-	if err != nil {
-		PrintErr(err.Error())
-		os.Exit(1)
-	}
+	HandleError(err, "Unable to update system")
 
 	PrintInfo("Upgrading system...\n")
 	err = RunCmd("apt-get", "upgrade", "-y")
-	if err != nil {
-		PrintErr(err.Error())
-		os.Exit(1)
-	}
+	HandleError(err, "Unable to upgrade system")
 }
 
 func InstallXray() {
-	PrintInfo("Downloading Xray installer...")
+	PrintInfo("Downloading Xray installer...\n")
 	resp, err := http.Get(XRAY_INSTALL_URL)
-	if err != nil {
-		fmt.Println()
-		PrintErr(err.Error())
-		os.Exit(1)
-	}
+	HandleError(err, "Unable to download xray installer")
 	bytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println()
-		PrintErr(err.Error())
-		os.Exit(1)
-	}
-	fmt.Println("done!")
+	HandleError(err, "Unable to read xray installer")
 
-	err = os.WriteFile("./install-xray.sh", bytes, 0777) // TODO: save to tempdir
-	if err != nil {
-		PrintErr(err.Error())
-		os.Exit(1)
-	}
+	installerPath := os.TempDir() + "/install-xray.sh"
+	err = os.WriteFile(installerPath, bytes, 0777)
+	HandleError(err, "Unable to write xray installer")
 
 	PrintInfo("Running installer...\n")
 	err = RunCmd("./install-xray.sh")
-	if err != nil {
-		PrintErr(err.Error())
-		os.Exit(1)
-	}
+	HandleError(err, "Unable to run xray installer")
 
-	PrintInfo("Verifying installation...")
+	PrintInfo("Verifying installation...\n")
 	out, err := exec.Command("xray", "--version", ">", "/dev/null", "2", ">", "&1", "&&", "echo", "0", "||", "echo", "1").Output()
-	if err != nil {
-		fmt.Println()
-		PrintErr(err.Error())
-		os.Exit(1)
-	}
+	HandleError(err, "Unable to verify xray installation")
 	if string(out[:]) == "1" {
 		fmt.Println()
 		PrintErr("Xray wasn't installed successfully; exiting...\n")
 		os.Exit(1)
 	}
-	fmt.Println("done!")
 }
 
-func NewXrayContext(dest, server_name string) *XrayContext {
-	key, pub_key := xrayKeys()
+func NewXrayContext(dest, serverName string) *XrayContext {
+	key, pubKey := NewXrayKeys()
 	ctx := XrayContext{
 		dest:       dest,
-		serverName: server_name,
+		serverName: serverName,
 		privateKey: key,
-		public_key: pub_key,
-		clientID:   xrayUuid(),
-		shortID:    shortID(),
+		public_key: pubKey,
+		clientID:   NewXrayUuid(),
+		shortID:    NewShortID(),
 	}
 	return &ctx
 }
@@ -123,12 +95,9 @@ func MakeXrayConfig(ctx *XrayContext) string {
 }
 
 func WriteConfigFile(cfg string) {
-	PrintInfo("Updating config file at `/usr/local/etc/xray/config.json`\n")
-	err := os.WriteFile("/usr/local/etc/xray/config.json", []byte(cfg), 0444)
-	if err != nil {
-		PrintErr(err.Error())
-		os.Exit(1)
-	}
+	PrintInfo(fmt.Sprintf("Updating config file at `%s`\n", XRAY_CONFIG_PATH))
+	err := os.WriteFile(XRAY_CONFIG_PATH, []byte(cfg), 0444)
+	HandleError(err, "Unable to write xray config file")
 }
 
 func RestartXray() {
@@ -144,10 +113,7 @@ func RestartXray() {
 		"-n", "1",
 		"--no-pager",
 	).Output()
-	if err != nil {
-		PrintErr(err.Error())
-		os.Exit(1)
-	}
+	HandleError(err, "Unable to get xray logs")
 	re := regexp.MustCompile("core: Xray .* started")
 	if re.Find(out) == nil {
 		PrintErr("Something went wrong during xray restarting:\n")
@@ -163,8 +129,10 @@ func RestartXray() {
 	}
 }
 
-const XRAY_INSTALL_URL = "https://raw.githubusercontent.com/XTLS/Xray-install/046d9aa2432b3a6241d73c3684ef4e512974b594/install-release.sh"
-const XRAY_CONFIG_TEMPLATE = `{
+const (
+	XRAY_INSTALL_URL     = "https://raw.githubusercontent.com/XTLS/Xray-install/046d9aa2432b3a6241d73c3684ef4e512974b594/install-release.sh"
+	XRAY_CONFIG_PATH     = "/usr/local/etc/xray/config.json"
+	XRAY_CONFIG_TEMPLATE = `{
   "log": {
     "loglevel": "info"
   },
@@ -236,6 +204,9 @@ const XRAY_CONFIG_TEMPLATE = `{
     }
   ]
 }`
+)
+
+// internal
 
 type XrayContext struct {
 	dest       string
@@ -244,6 +215,13 @@ type XrayContext struct {
 	public_key string
 	clientID   string
 	shortID    string
+}
+
+func HandleError(err error, msg string) {
+	if err != nil {
+		PrintErr(fmt.Sprintf("%s: %s\n", msg, err))
+		os.Exit(1)
+	}
 }
 
 func PrintLvl(lvl, msg string) {
@@ -271,21 +249,15 @@ func RunCmd(cmdName string, args ...string) error {
 	return err
 }
 
-func xrayUuid() string {
+func NewXrayUuid() string {
 	out, err := exec.Command("xray", "uuid").Output()
-	if err != nil {
-		PrintErr(err.Error())
-		os.Exit(1)
-	}
+	HandleError(err, "Unable to generate UUID")
 	return string(out[0 : len(out)-1])
 }
 
-func xrayKeys() (string, string) {
+func NewXrayKeys() (string, string) {
 	out, err := exec.Command("xray", "x25519").Output()
-	if err != nil {
-		PrintErr(err.Error())
-		os.Exit(1)
-	}
+	HandleError(err, "Unable to generate xray keys")
 	re := regexp.MustCompile("Private key: (.+)\nPublic key: (.+)\n")
 	groups := re.FindStringSubmatch(string(out[:]))
 	private_key := groups[1]
@@ -293,11 +265,8 @@ func xrayKeys() (string, string) {
 	return private_key, public_key
 }
 
-func shortID() string {
+func NewShortID() string {
 	out, err := exec.Command("openssl", "rand", "-hex", "8").Output()
-	if err != nil {
-		PrintErr(err.Error())
-		os.Exit(1)
-	}
+	HandleError(err, "Unable to generate short ID")
 	return string(out[0 : len(out)-1])
 }
