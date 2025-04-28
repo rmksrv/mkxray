@@ -1,5 +1,8 @@
 name: Build & Release
 
+permissions:
+  contents: write
+
 on:
   push:
     branches:
@@ -33,6 +36,7 @@ jobs:
       - name: Create GitHub Release and upload binaries
         uses: ncipollo/release-action@v1
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           tag: v${{ github.run_number }}
           name: Release ${{ github.run_number }}
           artifacts: "build/*"
