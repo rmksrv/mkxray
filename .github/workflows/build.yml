@@ -30,7 +30,7 @@ jobs:
           if [ "${{ matrix.os }}" = "windows" ]; then ext=".exe"; fi
           GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} \
             go build -ldflags="-s -w" \
-            -o build/mkxray${ext} \
+            -o build/mkxray-${{ matrix.arch }}${ext} \
             .
 
       - name: Create GitHub Release and upload binaries
