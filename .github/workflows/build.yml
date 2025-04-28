@@ -5,40 +5,41 @@ permissions:
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
-  build-and-release:
+  build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        os: [linux]
-        arch: [amd64, arm64]
+        os: [ linux ]
+        arch: [ amd64, arm64 ]
     steps:
       - uses: actions/checkout@v3
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.24'
-
-      - name: Build ${{ matrix.os }} / ${{ matrix.arch }}
+      - uses: actions/setup-go@v4
+        with: { go-version: '1.24' }
+      - name: Build ${{ matrix.arch }}
         run: |
-          mkdir -p build
-          ext=""
-          if [ "${{ matrix.os }}" = "windows" ]; then ext=".exe"; fi
-          GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} \
+          mkdir -p artifacts
+          GOOS=linux GOARCH=${{ matrix.arch }} \
             go build -ldflags="-s -w" \
-            -o build/mkxray-${{ matrix.arch }}${ext} \
-            .
+            -o artifacts/mkxray-${{ matrix.arch }} .
+      - uses: actions/upload-artifact@v3
+        with:
+          name: mkxray-${{ matrix.arch }}
+          path: artifacts/mkxray-${{ matrix.arch }}
 
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          path: build
       - name: Create GitHub Release and upload binaries
         uses: ncipollo/release-action@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: v${{ github.run_number }}
           name: Release ${{ github.run_number }}
-          artifacts: "build/*"
-          skipIfReleaseExists: true
-          replacesArtifacts: true
+          artifacts: build/*
