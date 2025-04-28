@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v3
         with:
-          path: build
+          path: artifacts
       - name: Create GitHub Release and upload binaries
         uses: ncipollo/release-action@v1
         with:
