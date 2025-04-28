@@ -36,6 +36,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: build
+          merge-multiple: true
       - name: Create GitHub Release and upload binaries
         uses: ncipollo/release-action@v1
         with:
