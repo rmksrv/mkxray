@@ -30,7 +30,7 @@ jobs:
           if [ "${{ matrix.os }}" = "windows" ]; then ext=".exe"; fi
           GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} \
             go build -ldflags="-s -w" \
-            -o build/myprog-${{ matrix.os }}-${{ matrix.arch }}${ext} \
+            -o build/mkxray${ext} \
             .
 
       - name: Create GitHub Release and upload binaries
@@ -40,3 +40,5 @@ jobs:
           tag: v${{ github.run_number }}
           name: Release ${{ github.run_number }}
           artifacts: "build/*"
+          skipIfReleaseExists: true
+          replacesArtifacts: true
