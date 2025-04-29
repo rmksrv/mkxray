@@ -23,7 +23,8 @@ func main() {
 		DownloadXray(),
 		InstallXray(),
 		CheckXray(),
-		GenerateXrayContext(ctx, "www.samsung.com:443", "www.samsung.com"),
+		PickDestination(ctx, app),
+		GenerateXrayContext(ctx),
 		WriteXrayConfig(ctx),
 		RestartXray(),
 	}
@@ -41,8 +42,8 @@ func main() {
 	}
 	ClearUI(app)
 	RefreshLines(app)
+	AppendEndMessage(app, ctx)
 	RenderUI(app)
-	RenderEndMessage(app, ctx)
 }
 
 func CheckIfProperSystem() *Job {
@@ -119,16 +120,58 @@ func CheckXray() *Job {
 	})
 }
 
-func GenerateXrayContext(ctx *XrayContext, dest, serverName string) *Job {
+func PickDestination(ctx *XrayContext, app *App) *Job {
+	knownDestinations := []string{
+		"www.samsung.com:443",
+		"www.asus.com:443",
+		"www.microsoft.com:443",
+	}
+	j := NewJob("Pick website to mimick", nil)
+	j.Execute = func() error {
+		for i, dest := range knownDestinations {
+			WriteJobOutput(fmt.Sprintf("%d. %s\n", i+1, dest), j, app)
+		}
+		WriteJobOutput("Choose one of sites to mimick:\n", j, app)
+		time.Sleep(3 * time.Second)
+		choice := knownDestinations[0]
+		WriteJobOutput("You chose: "+choice+"\n", j, app)
+		ctx.Dest = choice
+		time.Sleep(3 * time.Second)
+		ClearJobOutput(j, app)
+		return nil
+	}
+	return j
+}
+
+func GenerateXrayContext(ctx *XrayContext) *Job {
 	return NewJob("Generate xray context", func() error {
-		key, pubKey := NewXrayKeys()
-		ctx.Dest = dest
+		serverName := strings.SplitN(ctx.Dest, ":", 1)[0]
+		if serverName == "" {
+			return fmt.Errorf("unable to get server name from destination")
+		}
+		key, pubKey, err := NewXrayKeys()
+		if err != nil {
+			return fmt.Errorf("unable to generate xray keys: %v", err)
+		}
+		shortID, err := NewShortID()
+		if err != nil {
+			return fmt.Errorf("unable to generate short ID: %v", err)
+		}
+		clientID, err := NewXrayUuid()
+		if err != nil {
+			return fmt.Errorf("unable to generate xray UUID: %v", err)
+		}
+		externalID, err := GetExternalIP()
+		if err != nil {
+			return fmt.Errorf("unable to get external IP: %v", err)
+		}
+
 		ctx.ServerName = serverName
 		ctx.PrivateKey = key
 		ctx.PublicKey = pubKey
-		ctx.ClientID = NewXrayUuid()
-		ctx.ShortID = NewShortID()
-		ctx.ExternalIP = GetExternalIP()
+		ctx.ClientID = clientID
+		ctx.ShortID = shortID
+		ctx.ExternalIP = externalID
 		ctx.VlessLink = GenerateVlessLink(ctx, "mkxray", "xtls-rprx-vision", "raw", "reality", "edge")
 		return nil
 	})
@@ -266,40 +309,40 @@ type XrayContext struct {
 	VlessLink  string
 }
 
-func NewXrayUuid() string {
+func NewXrayUuid() (string, error) {
 	out, err := exec.Command("xray", "uuid").Output()
 	if err != nil {
-		panic(err)
+		return "", err
 	}
-	return string(out[0 : len(out)-1])
+	return string(out[0 : len(out)-1]), nil
 }
 
-func NewXrayKeys() (string, string) {
+func NewXrayKeys() (string, string, error) {
 	out, err := exec.Command("xray", "x25519").Output()
 	if err != nil {
-		panic(err)
+		return "", "", err
 	}
 	re := regexp.MustCompile("Private key: (.+)\nPublic key: (.+)\n")
 	groups := re.FindStringSubmatch(string(out[:]))
 	private_key := groups[1]
 	public_key := groups[2]
-	return private_key, public_key
+	return private_key, public_key, nil
 }
 
-func NewShortID() string {
+func NewShortID() (string, error) {
 	out, err := exec.Command("openssl", "rand", "-hex", "8").Output()
 	if err != nil {
-		panic(err)
+		return "", err
 	}
-	return string(out[0 : len(out)-1])
+	return string(out[0 : len(out)-1]), nil
 }
 
-func GetExternalIP() string {
+func GetExternalIP() (string, error) {
 	out, err := exec.Command("dig", "+short", "myip.opendns.com", "@resolver1.opendns.com").Output()
 	if err != nil {
-		panic(err)
+		return "", err
 	}
-	return string(out[0 : len(out)-1])
+	return string(out[0 : len(out)-1]), nil
 }
 
 func GenerateVlessLink(ctx *XrayContext, name, flow, typ, security, fp string) string {

@@ -145,11 +145,11 @@ func ErrorMsg(app *App, s string) string {
 	return app.Output.String("ERROR:").Foreground(termenv.ANSIRed).String() + s
 }
 
-func RenderEndMessage(app *App, ctx *XrayContext) {
-	println()
-	println(header(app.Output, "All jobs completed! Import the following link into your Xray client:"))
-	println(ctx.VlessLink)
-	println()
+func AppendEndMessage(app *App, ctx *XrayContext) {
+	app.Lines = append(app.Lines, "")
+	app.Lines = append(app.Lines, header(app.Output, "All jobs completed! Import the following link into your Xray client:\n"))
+	app.Lines = append(app.Lines, ctx.VlessLink)
+	app.Lines = append(app.Lines, "")
 }
 
 func italics(output *termenv.Output, s []string) []string {
