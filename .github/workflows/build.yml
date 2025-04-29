@@ -48,4 +48,4 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: v${{ github.run_number }}
           name: Release ${{ github.run_number }}
-          artifacts: build/*
+          artifacts: build/*.tar.gz
