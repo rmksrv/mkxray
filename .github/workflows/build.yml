@@ -24,6 +24,11 @@ jobs:
           GOOS=linux GOARCH=${{ matrix.arch }} \
             go build -ldflags="-s -w" \
             -o artifacts/mkxray-${{ matrix.arch }} .
+      - name: Archive binaries
+        run: |
+          mkdir -p release
+          tar czf release/mkxray-linux-${{ matrix.arch }}.tar.gz \
+              -C artifacts mkxray-${{ matrix.arch }}
       - uses: actions/upload-artifact@v4
         with:
           name: mkxray-${{ matrix.arch }}
