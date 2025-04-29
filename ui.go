@@ -11,12 +11,13 @@ var appInited = false
 
 type App struct {
 	Header         string
-	Jobs           []Job
+	Jobs           []*Job
 	Output         *termenv.Output
 	RestoreConsole func() error
+	Lines          []string
 }
 
-func InitApp(header string, jobs ...Job) *App {
+func InitApp(header string, jobs ...*Job) *App {
 	if appInited {
 		panic("app already initialized")
 	}
@@ -27,49 +28,88 @@ func InitApp(header string, jobs ...Job) *App {
 	}
 	output := termenv.NewOutput(os.Stdout, termenv.WithProfile(termenv.TrueColor))
 
-	appInited = true
-	return &App{
+	app := &App{
 		Header:         header,
 		Jobs:           jobs,
 		Output:         output,
 		RestoreConsole: restoreConsole,
+		Lines:          make([]string, 0),
+	}
+	appInited = true
+	return app
+}
+
+func ClearUI(app *App) {
+	app.Output.ClearLines(len(app.Lines))
+}
+
+func RenderUI(app *App) {
+	for _, line := range app.Lines {
+		println(line)
 	}
 }
 
-func RenderUI(app *App, clear bool) {
-	if clear {
-		app.Output.ClearLines(len(app.Jobs) + 1)
-	}
+func RefreshLines(app *App) {
+	app.Lines = make([]string, 0)
 
-	println(header(app.Output, app.Header))
+	headerLine := header(app.Output, app.Header)
+	app.Lines = append(app.Lines, headerLine)
 
 	for _, job := range app.Jobs {
-		println(ulistItem(app.Output, job.Name, job.Status, 0))
+		jobItem := ulistItem(app.Output, job.Name, job.Status, 0)
+		app.Lines = append(app.Lines, jobItem)
+		if job.Output != "" {
+			jobOutputLines := italics(app.Output, strings.Split(job.Output, "\n"))
+			app.Lines = append(app.Lines, jobOutputLines...)
+		}
 	}
 }
 
 type Job struct {
 	Name    string
 	Status  JobStatus
+	Output  string
 	Execute func() error
 }
 
-func NewJob(name string, execute func() error) Job {
-	return Job{
+func NewJob(name string, execute func() error) *Job {
+	return &Job{
 		Name:    name,
 		Status:  WAITING,
+		Output:  "",
 		Execute: execute,
 	}
 }
 
-func RunJob(job *Job) error {
+func RunJob(job *Job, app *App) error {
+	job.Status = IN_PROGRESS
+	ClearUI(app)
+	RefreshLines(app)
+	RenderUI(app)
 	err := job.Execute()
 	if err != nil {
 		job.Status = ERROR
 	} else {
 		job.Status = OK
 	}
+	ClearUI(app)
+	RefreshLines(app)
+	RenderUI(app)
 	return err
+}
+
+func ClearJobOutput(job *Job, app *App) {
+	ClearUI(app)
+	job.Output = ""
+	RefreshLines(app)
+	RenderUI(app)
+}
+
+func WriteJobOutput(output string, job *Job, app *App) {
+	ClearUI(app)
+	job.Output += output
+	RefreshLines(app)
+	RenderUI(app)
 }
 
 type JobStatus int
@@ -110,4 +150,12 @@ func RenderEndMessage(app *App, ctx *XrayContext) {
 	println(header(app.Output, "All jobs completed! Import the following link into your Xray client:"))
 	println(ctx.VlessLink)
 	println()
+}
+
+func italics(output *termenv.Output, s []string) []string {
+	res := make([]string, len(s))
+	for i, line := range s {
+		res[i] = output.String("      " + line).Bold().String()
+	}
+	return res
 }

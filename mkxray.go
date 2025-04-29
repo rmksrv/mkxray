@@ -15,49 +15,48 @@ import (
 
 func main() {
 	ctx := &XrayContext{}
-	app := InitApp(
-		"Setup mkxray, please wait...",
-		*CheckIfProperSystem(),
-		*CheckIfRoot(),
-		*DownloadXray(),
-		*InstallXray(),
-		*CheckXray(),
-		*GenerateXrayContext(ctx, "www.samsung.com:443", "www.samsung.com"),
-		*WriteXrayConfig(ctx),
-		*RestartXray(),
-	)
+	app := InitApp("Setup mkxray, please wait...")
 	defer app.RestoreConsole()
+	app.Jobs = []*Job{
+		CheckIfProperSystem(),
+		CheckIfRoot(),
+		DownloadXray(),
+		InstallXray(),
+		CheckXray(),
+		GenerateXrayContext(ctx, "www.samsung.com:443", "www.samsung.com"),
+		WriteXrayConfig(ctx),
+		RestartXray(),
+	}
 
-	RenderUI(app, false)
+	RefreshLines(app)
+	RenderUI(app)
 	for jobIdx := range app.Jobs {
-		job := &app.Jobs[jobIdx]
-		job.Status = IN_PROGRESS
-		RenderUI(app, true)
-		err := RunJob(job)
-		RenderUI(app, true)
+		job := app.Jobs[jobIdx]
+		err := RunJob(job, app)
 
 		if err != nil {
 			println(ErrorMsg(app, err.Error()))
 			os.Exit(1)
 		}
 	}
-	RenderUI(app, true)
+	ClearUI(app)
+	RefreshLines(app)
+	RenderUI(app)
 	RenderEndMessage(app, ctx)
 }
 
 func CheckIfProperSystem() *Job {
-	j := NewJob("Check system", func() error {
+	return NewJob("Check system", func() error {
 		sys := runtime.GOOS
 		if sys != "linux" {
-			return fmt.Errorf("system is not linux")
+			return fmt.Errorf("found %s system; not linux", sys)
 		}
 		return nil
 	})
-	return &j
 }
 
 func CheckIfRoot() *Job {
-	j := NewJob("Check if root", func() error {
+	return NewJob("Check if root", func() error {
 		currentUser, err := user.Current()
 		if err != nil {
 			return fmt.Errorf("unable to get current user")
@@ -67,11 +66,10 @@ func CheckIfRoot() *Job {
 		}
 		return nil
 	})
-	return &j
 }
 
 func DownloadXray() *Job {
-	j := NewJob("Download xray installer", func() error {
+	return NewJob("Download xray installer", func() error {
 		resp, err := http.Get(XRAY_INSTALL_URL)
 		if err != nil {
 			return fmt.Errorf("unable to download xray installer: %v", err)
@@ -91,11 +89,10 @@ func DownloadXray() *Job {
 		}
 		return nil
 	})
-	return &j
 }
 
 func InstallXray() *Job {
-	j := NewJob("Install xray", func() error {
+	return NewJob("Install xray", func() error {
 		installerPath := os.TempDir() + "/install-xray.sh"
 		_, err := exec.Command(installerPath).Output()
 		if err != nil {
@@ -103,11 +100,10 @@ func InstallXray() *Job {
 		}
 		return nil
 	})
-	return &j
 }
 
 func CheckXray() *Job {
-	j := NewJob("Check xray installation", func() error {
+	return NewJob("Check xray installation", func() error {
 		out, err := exec.Command(
 			"xray", "--version", ">", "/dev/null", "2", ">", "&1",
 			"&&", "echo", "0",
@@ -121,11 +117,10 @@ func CheckXray() *Job {
 		}
 		return nil
 	})
-	return &j
 }
 
 func GenerateXrayContext(ctx *XrayContext, dest, serverName string) *Job {
-	j := NewJob("Generate xray context", func() error {
+	return NewJob("Generate xray context", func() error {
 		key, pubKey := NewXrayKeys()
 		ctx.Dest = dest
 		ctx.ServerName = serverName
@@ -137,11 +132,10 @@ func GenerateXrayContext(ctx *XrayContext, dest, serverName string) *Job {
 		ctx.VlessLink = GenerateVlessLink(ctx, "mkxray", "xtls-rprx-vision", "raw", "reality", "edge")
 		return nil
 	})
-	return &j
 }
 
 func WriteXrayConfig(ctx *XrayContext) *Job {
-	j := NewJob("Write Xray config", func() error {
+	return NewJob("Write Xray config", func() error {
 		cfg := strings.NewReplacer(
 			"$dest$", ctx.Dest,
 			"$clientID$", ctx.ClientID,
@@ -155,11 +149,10 @@ func WriteXrayConfig(ctx *XrayContext) *Job {
 		}
 		return nil
 	})
-	return &j
 }
 
 func RestartXray() *Job {
-	j := NewJob("Restart xray", func() error {
+	return NewJob("Restart xray", func() error {
 		_, err := exec.Command("systemctl", "restart", "xray").Output()
 		if err != nil {
 			return fmt.Errorf("unable to restart xray: %v", err)
@@ -181,7 +174,6 @@ func RestartXray() *Job {
 		}
 		return nil
 	})
-	return &j
 }
 
 // internal
