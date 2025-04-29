@@ -15,49 +15,49 @@ import (
 
 func main() {
 	ctx := &XrayContext{}
-	app := InitApp(
-		"Setup mkxray, please wait...",
-		*CheckIfProperSystem(),
-		*CheckIfRoot(),
-		*DownloadXray(),
-		*InstallXray(),
-		*CheckXray(),
-		*GenerateXrayContext(ctx, "www.samsung.com:443", "www.samsung.com"),
-		*WriteXrayConfig(ctx),
-		*RestartXray(),
-	)
+	app := InitApp("Setup mkxray, please wait...")
 	defer app.RestoreConsole()
+	app.Jobs = []*Job{
+		CheckIfProperSystem(),
+		CheckIfRoot(),
+		DownloadXray(),
+		InstallXray(),
+		CheckXray(),
+		PickDestination(ctx, app),
+		GenerateXrayContext(ctx),
+		WriteXrayConfig(ctx),
+		RestartXray(),
+	}
 
-	RenderUI(app, false)
+	RefreshLines(app)
+	RenderUI(app)
 	for jobIdx := range app.Jobs {
-		job := &app.Jobs[jobIdx]
-		job.Status = IN_PROGRESS
-		RenderUI(app, true)
-		err := RunJob(job)
-		RenderUI(app, true)
+		job := app.Jobs[jobIdx]
+		err := RunJob(job, app)
 
 		if err != nil {
 			println(ErrorMsg(app, err.Error()))
 			os.Exit(1)
 		}
 	}
-	RenderUI(app, true)
-	RenderEndMessage(app, ctx)
+	ClearUI(app)
+	RefreshLines(app)
+	AppendEndMessage(app, ctx)
+	RenderUI(app)
 }
 
 func CheckIfProperSystem() *Job {
-	j := NewJob("Check system", func() error {
+	return NewJob("Check system", func() error {
 		sys := runtime.GOOS
 		if sys != "linux" {
-			return fmt.Errorf("system is not linux")
+			return fmt.Errorf("found %s system; not linux", sys)
 		}
 		return nil
 	})
-	return &j
 }
 
 func CheckIfRoot() *Job {
-	j := NewJob("Check if root", func() error {
+	return NewJob("Check if root", func() error {
 		currentUser, err := user.Current()
 		if err != nil {
 			return fmt.Errorf("unable to get current user")
@@ -67,11 +67,10 @@ func CheckIfRoot() *Job {
 		}
 		return nil
 	})
-	return &j
 }
 
 func DownloadXray() *Job {
-	j := NewJob("Download xray installer", func() error {
+	return NewJob("Download xray installer", func() error {
 		resp, err := http.Get(XRAY_INSTALL_URL)
 		if err != nil {
 			return fmt.Errorf("unable to download xray installer: %v", err)
@@ -91,11 +90,10 @@ func DownloadXray() *Job {
 		}
 		return nil
 	})
-	return &j
 }
 
 func InstallXray() *Job {
-	j := NewJob("Install xray", func() error {
+	return NewJob("Install xray", func() error {
 		installerPath := os.TempDir() + "/install-xray.sh"
 		_, err := exec.Command(installerPath).Output()
 		if err != nil {
@@ -103,11 +101,10 @@ func InstallXray() *Job {
 		}
 		return nil
 	})
-	return &j
 }
 
 func CheckXray() *Job {
-	j := NewJob("Check xray installation", func() error {
+	return NewJob("Check xray installation", func() error {
 		out, err := exec.Command(
 			"xray", "--version", ">", "/dev/null", "2", ">", "&1",
 			"&&", "echo", "0",
@@ -121,27 +118,65 @@ func CheckXray() *Job {
 		}
 		return nil
 	})
-	return &j
 }
 
-func GenerateXrayContext(ctx *XrayContext, dest, serverName string) *Job {
-	j := NewJob("Generate xray context", func() error {
-		key, pubKey := NewXrayKeys()
-		ctx.Dest = dest
+func PickDestination(ctx *XrayContext, app *App) *Job {
+	knownDestinations := []string{
+		"www.samsung.com:443",
+		"www.asus.com:443",
+		"www.microsoft.com:443",
+	}
+	j := NewJob("Pick website to mimick", nil)
+	j.Execute = func() error {
+		for i, dest := range knownDestinations {
+			WriteJobOutput(fmt.Sprintf("%d. %s\n", i+1, dest), j, app)
+		}
+		choice := knownDestinations[0]
+		WriteJobOutput("Auto chosen: "+choice, j, app)
+		ctx.Dest = choice
+		time.Sleep(3 * time.Second)
+		ClearJobOutput(j, app)
+		return nil
+	}
+	return j
+}
+
+func GenerateXrayContext(ctx *XrayContext) *Job {
+	return NewJob("Generate xray context", func() error {
+		serverName := strings.SplitN(ctx.Dest, ":", 1)[0]
+		if serverName == "" {
+			return fmt.Errorf("unable to get server name from destination")
+		}
+		key, pubKey, err := NewXrayKeys()
+		if err != nil {
+			return fmt.Errorf("unable to generate xray keys: %v", err)
+		}
+		shortID, err := NewShortID()
+		if err != nil {
+			return fmt.Errorf("unable to generate short ID: %v", err)
+		}
+		clientID, err := NewXrayUuid()
+		if err != nil {
+			return fmt.Errorf("unable to generate xray UUID: %v", err)
+		}
+		externalID, err := GetExternalIP()
+		if err != nil {
+			return fmt.Errorf("unable to get external IP: %v", err)
+		}
+
 		ctx.ServerName = serverName
 		ctx.PrivateKey = key
 		ctx.PublicKey = pubKey
-		ctx.ClientID = NewXrayUuid()
-		ctx.ShortID = NewShortID()
-		ctx.ExternalIP = GetExternalIP()
+		ctx.ClientID = clientID
+		ctx.ShortID = shortID
+		ctx.ExternalIP = externalID
 		ctx.VlessLink = GenerateVlessLink(ctx, "mkxray", "xtls-rprx-vision", "raw", "reality", "edge")
 		return nil
 	})
-	return &j
 }
 
 func WriteXrayConfig(ctx *XrayContext) *Job {
-	j := NewJob("Write Xray config", func() error {
+	return NewJob("Write Xray config", func() error {
 		cfg := strings.NewReplacer(
 			"$dest$", ctx.Dest,
 			"$clientID$", ctx.ClientID,
@@ -155,11 +190,10 @@ func WriteXrayConfig(ctx *XrayContext) *Job {
 		}
 		return nil
 	})
-	return &j
 }
 
 func RestartXray() *Job {
-	j := NewJob("Restart xray", func() error {
+	return NewJob("Restart xray", func() error {
 		_, err := exec.Command("systemctl", "restart", "xray").Output()
 		if err != nil {
 			return fmt.Errorf("unable to restart xray: %v", err)
@@ -181,10 +215,14 @@ func RestartXray() *Job {
 		}
 		return nil
 	})
-	return &j
 }
 
-// internal
+func AppendEndMessage(app *App, ctx *XrayContext) {
+	app.Lines = append(app.Lines, "")
+	app.Lines = append(app.Lines, Header(app, "All jobs completed! Import the following link into your Xray client:"))
+	app.Lines = append(app.Lines, ctx.VlessLink)
+	app.Lines = append(app.Lines, "")
+}
 
 const (
 	XRAY_INSTALL_URL     = "https://raw.githubusercontent.com/XTLS/Xray-install/046d9aa2432b3a6241d73c3684ef4e512974b594/install-release.sh"
@@ -274,40 +312,40 @@ type XrayContext struct {
 	VlessLink  string
 }
 
-func NewXrayUuid() string {
+func NewXrayUuid() (string, error) {
 	out, err := exec.Command("xray", "uuid").Output()
 	if err != nil {
-		panic(err)
+		return "", err
 	}
-	return string(out[0 : len(out)-1])
+	return string(out[0 : len(out)-1]), nil
 }
 
-func NewXrayKeys() (string, string) {
+func NewXrayKeys() (string, string, error) {
 	out, err := exec.Command("xray", "x25519").Output()
 	if err != nil {
-		panic(err)
+		return "", "", err
 	}
 	re := regexp.MustCompile("Private key: (.+)\nPublic key: (.+)\n")
 	groups := re.FindStringSubmatch(string(out[:]))
 	private_key := groups[1]
 	public_key := groups[2]
-	return private_key, public_key
+	return private_key, public_key, nil
 }
 
-func NewShortID() string {
+func NewShortID() (string, error) {
 	out, err := exec.Command("openssl", "rand", "-hex", "8").Output()
 	if err != nil {
-		panic(err)
+		return "", err
 	}
-	return string(out[0 : len(out)-1])
+	return string(out[0 : len(out)-1]), nil
 }
 
-func GetExternalIP() string {
+func GetExternalIP() (string, error) {
 	out, err := exec.Command("dig", "+short", "myip.opendns.com", "@resolver1.opendns.com").Output()
 	if err != nil {
-		panic(err)
+		return "", err
 	}
-	return string(out[0 : len(out)-1])
+	return string(out[0 : len(out)-1]), nil
 }
 
 func GenerateVlessLink(ctx *XrayContext, name, flow, typ, security, fp string) string {

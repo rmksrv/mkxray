@@ -1,101 +1,52 @@
 package main
 
 import (
-	"os"
 	"strings"
 
 	"github.com/muesli/termenv"
 )
 
-var appInited = false
-
-type App struct {
-	Header         string
-	Jobs           []Job
-	Output         *termenv.Output
-	RestoreConsole func() error
+func ClearUI(app *App) {
+	app.Output.ClearLines(len(app.Lines))
 }
 
-func InitApp(header string, jobs ...Job) *App {
-	if appInited {
-		panic("app already initialized")
-	}
-
-	restoreConsole, err := termenv.EnableVirtualTerminalProcessing(termenv.DefaultOutput())
-	if err != nil {
-		panic(err)
-	}
-	output := termenv.NewOutput(os.Stdout, termenv.WithProfile(termenv.TrueColor))
-
-	appInited = true
-	return &App{
-		Header:         header,
-		Jobs:           jobs,
-		Output:         output,
-		RestoreConsole: restoreConsole,
+func RenderUI(app *App) {
+	for _, line := range app.Lines {
+		println(line)
 	}
 }
 
-func RenderUI(app *App, clear bool) {
-	if clear {
-		app.Output.ClearLines(len(app.Jobs) + 1)
-	}
+func RefreshLines(app *App) {
+	app.Lines = make([]string, 0)
 
-	println(header(app.Output, app.Header))
+	headerLine := Header(app, app.Header)
+	app.Lines = append(app.Lines, headerLine)
 
 	for _, job := range app.Jobs {
-		println(ulistItem(app.Output, job.Name, job.Status, 0))
+		jobItem := UListItem(app, job.Name, job.Status, 0)
+		app.Lines = append(app.Lines, jobItem)
+		if job.Output != "" {
+			jobOutputLines := Italics(app, strings.Split(job.Output, "\n"))
+			app.Lines = append(app.Lines, jobOutputLines...)
+		}
 	}
 }
 
-type Job struct {
-	Name    string
-	Status  JobStatus
-	Execute func() error
+func Header(app *App, s string) string {
+	return app.Output.String(s).Bold().Foreground(termenv.ANSIWhite).String()
 }
 
-func NewJob(name string, execute func() error) Job {
-	return Job{
-		Name:    name,
-		Status:  WAITING,
-		Execute: execute,
-	}
-}
-
-func RunJob(job *Job) error {
-	err := job.Execute()
-	if err != nil {
-		job.Status = ERROR
-	} else {
-		job.Status = OK
-	}
-	return err
-}
-
-type JobStatus int
-
-const (
-	OK JobStatus = iota
-	ERROR
-	WAITING
-	IN_PROGRESS
-)
-
-func header(out *termenv.Output, s string) string {
-	return out.String(s).Bold().Foreground(termenv.ANSIWhite).String()
-}
-
-func ulistItem(out *termenv.Output, item string, status JobStatus, indent int) string {
+func UListItem(app *App, item string, status JobStatus, indent int) string {
 	var marker string
 	switch status {
 	case OK:
-		marker = out.String("+").Foreground(termenv.ANSIGreen).String()
+		marker = app.Output.String("+").Foreground(termenv.ANSIGreen).String()
 	case ERROR:
-		marker = out.String("x").Foreground(termenv.ANSIRed).String()
+		marker = app.Output.String("x").Foreground(termenv.ANSIRed).String()
 	case IN_PROGRESS:
-		marker = out.String("=").Foreground(termenv.ANSICyan).String()
+		marker = app.Output.String("=").Foreground(termenv.ANSICyan).String()
 	case WAITING:
-		marker = out.String("-").String()
+		marker = app.Output.String("-").String()
 	}
 	indentation := strings.Repeat("  ", indent)
 	return strings.Join([]string{indentation, marker, item}, " ")
@@ -105,9 +56,10 @@ func ErrorMsg(app *App, s string) string {
 	return app.Output.String("ERROR:").Foreground(termenv.ANSIRed).String() + s
 }
 
-func RenderEndMessage(app *App, ctx *XrayContext) {
-	println()
-	println(header(app.Output, "All jobs completed! Import the following link into your Xray client:"))
-	println(ctx.VlessLink)
-	println()
+func Italics(app *App, s []string) []string {
+	res := make([]string, len(s))
+	for i, line := range s {
+		res[i] = app.Output.String("      " + line).Bold().String()
+	}
+	return res
 }
