@@ -131,10 +131,8 @@ func PickDestination(ctx *XrayContext, app *App) *Job {
 		for i, dest := range knownDestinations {
 			WriteJobOutput(fmt.Sprintf("%d. %s\n", i+1, dest), j, app)
 		}
-		WriteJobOutput("Choose one of sites to mimick:\n", j, app)
-		time.Sleep(3 * time.Second)
 		choice := knownDestinations[0]
-		WriteJobOutput("You chose: "+choice+"\n", j, app)
+		WriteJobOutput("Auto chosen: "+choice, j, app)
 		ctx.Dest = choice
 		time.Sleep(3 * time.Second)
 		ClearJobOutput(j, app)
@@ -219,7 +217,12 @@ func RestartXray() *Job {
 	})
 }
 
-// internal
+func AppendEndMessage(app *App, ctx *XrayContext) {
+	app.Lines = append(app.Lines, "")
+	app.Lines = append(app.Lines, Header(app, "All jobs completed! Import the following link into your Xray client:"))
+	app.Lines = append(app.Lines, ctx.VlessLink)
+	app.Lines = append(app.Lines, "")
+}
 
 const (
 	XRAY_INSTALL_URL     = "https://raw.githubusercontent.com/XTLS/Xray-install/046d9aa2432b3a6241d73c3684ef4e512974b594/install-release.sh"
