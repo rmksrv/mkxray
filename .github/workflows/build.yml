@@ -33,7 +33,7 @@ jobs:
               -C artifacts mkxray
       - uses: actions/upload-artifact@v4
         with:
-          name: mkxray-linux-${{ matrix.arch }}.tar.gz
+          name: app/mkxray-linux-${{ matrix.arch }}.tar.gz
           path: release/mkxray-linux-${{ matrix.arch }}.tar.gz
 
   release:
