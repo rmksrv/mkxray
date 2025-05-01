@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,16 +15,20 @@ import (
 )
 
 func main() {
-	ctx := &XrayContext{}
+  dest := flag.String("addr", "www.samsung.com:443", "URL to mimick")
+  flag.Parse()
+
+	ctx := &XrayContext{ Dest: *dest }
 	app := InitApp("Setup mkxray, please wait...")
 	defer app.RestoreConsole()
+
 	app.Jobs = []*Job{
 		CheckIfProperSystem(),
 		CheckIfRoot(),
 		DownloadXray(),
 		InstallXray(),
 		CheckXray(),
-		PickDestination(ctx, app),
+		PickIfNotDestination(ctx, app),
 		GenerateXrayContext(ctx),
 		WriteXrayConfig(ctx),
 		RestartXray(),
@@ -120,7 +125,7 @@ func CheckXray() *Job {
 	})
 }
 
-func PickDestination(ctx *XrayContext, app *App) *Job {
+func PickIfNotDestination(ctx *XrayContext, app *App) *Job {
 	knownDestinations := []string{
 		"www.samsung.com:443",
 		"www.asus.com:443",
@@ -128,15 +133,21 @@ func PickDestination(ctx *XrayContext, app *App) *Job {
 	}
 	j := NewJob("Pick website to mimick", nil)
 	j.Execute = func() error {
-		for i, dest := range knownDestinations {
-			WriteJobOutput(fmt.Sprintf("%d. %s\n", i+1, dest), j, app)
-		}
-		choice := knownDestinations[0]
-		WriteJobOutput("Auto chosen: "+choice, j, app)
-		ctx.Dest = choice
-		time.Sleep(3 * time.Second)
-		ClearJobOutput(j, app)
-		return nil
+    if ctx.Dest != "" {
+		  WriteJobOutput("Found URL in context\n", j, app)
+		  WriteJobOutput(ctx.Dest+"\n", j, app)
+		  WriteJobOutput("Skipping step...", j, app)
+    } else {
+	    for i, dest := range knownDestinations {
+	    	WriteJobOutput(fmt.Sprintf("%d. %s\n", i+1, dest), j, app)
+	    }
+	    choice := knownDestinations[0]
+	    WriteJobOutput("Auto chosen: "+choice, j, app)
+	    ctx.Dest = choice
+    }
+	  time.Sleep(3 * time.Second)
+	  ClearJobOutput(j, app)
+	  return nil
 	}
 	return j
 }
