@@ -27,6 +27,7 @@ jobs:
             -o artifacts/mkxray .
       - name: Archive binaries
         run: |
+          cd app
           mkdir -p release
           tar czf release/mkxray-linux-${{ matrix.arch }}.tar.gz \
               -C artifacts mkxray
