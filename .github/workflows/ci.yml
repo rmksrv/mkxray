@@ -22,6 +22,7 @@ jobs:
 
       - name: Build ${{ matrix.os }} / ${{ matrix.arch }}
         run: |
+          cd app
           mkdir -p build
           ext=""
           if [ "${{ matrix.os }}" = "windows" ]; then ext=".exe"; fi
@@ -32,4 +33,5 @@ jobs:
 
       - name: Run Tests
         run: |
+          cd app
           go test ./... -v
